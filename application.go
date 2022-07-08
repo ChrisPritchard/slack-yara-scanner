@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"log"
@@ -27,8 +28,6 @@ func main() {
 	defer f.Close()
 	// log.SetOutput(f)
 
-	const indexPage = "public/index.html"
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.NotFound(w, r)
@@ -42,8 +41,15 @@ func main() {
 			http.NotFound(w, r)
 		} else {
 			text := r.FormValue("text")
-			fmt.Fprintf(w, "scanning '%s'", text)
-			scan(text)
+			fmt.Fprintf(w, "scanning '%s'\n", text)
+
+			safe, matches := scan(text)
+			if safe {
+				fmt.Fprintf(w, "no bad strings found")
+			} else {
+				fmt.Fprintf(w, "%s", matches)
+			}
+
 		}
 	})
 
@@ -80,6 +86,24 @@ func buildRules() {
 	scanner = *scannerCandidate
 }
 
-func scan(text string) {
+func scan(text string) (bool, string) {
+	var m yara.MatchRules
+	err := scanner.SetCallback(&m).ScanMem([]byte(text))
+	if err != nil {
+		log.Fatal(err)
+	}
 
+	if len(m) == 0 {
+		return true, ""
+	}
+
+	buf := &bytes.Buffer{}
+	for i, match := range m {
+		if i > 0 {
+			fmt.Fprint(buf, ", ")
+		}
+		fmt.Fprintf(buf, "%s:%s", match.Namespace, match.Rule)
+	}
+
+	return false, buf.String()
 }
