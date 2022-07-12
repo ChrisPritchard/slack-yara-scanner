@@ -5,33 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-type Request struct {
-	RequestContext  RequestContext `json:"requestContext"`
-	Body            string         `json:"body"`
-	IsBase64Encoded bool           `json:"isBase64Encoded"`
-}
-
-type RequestContext struct {
-	Http HttpDetails `json:"http"`
-}
-
-type HttpDetails struct {
-	Method string `json:"method"`
-}
-
-type Response struct {
-	StatusCode int               `json:"statusCode"`
-	Headers    map[string]string `json:"headers"`
-	Body       string            `json:"body"`
-}
-
-func Handler(request Request) (Response, error) {
+func Handler(request events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
 	message := "Hello World!"
 
-	if request.RequestContext.Http.Method == "POST" {
+	if request.RequestContext.HTTP.Method == "POST" {
 		message = "You sent: "
 
 		body := request.Body
@@ -42,7 +23,7 @@ func Handler(request Request) (Response, error) {
 		var fields map[string]string
 		err := json.Unmarshal([]byte(body), &fields)
 
-		if err == nil && len(request.Body) > 0 {
+		if err == nil && len(fields) > 0 {
 			message += "\n\n"
 			for k, v := range fields {
 				message += fmt.Sprintf("%s: %s\n", k, v)
@@ -53,7 +34,7 @@ func Handler(request Request) (Response, error) {
 
 	}
 
-	return Response{
+	return events.LambdaFunctionURLResponse{
 		StatusCode: 200,
 		Headers:    map[string]string{"Content-Type": "text/html"},
 		Body:       message,
