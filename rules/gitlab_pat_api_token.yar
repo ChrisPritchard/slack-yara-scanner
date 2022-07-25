@@ -7,7 +7,7 @@ rule GitLabPatApiTokenRule : GitLab
         test_match_1 = "private-token:ab123mr980pas453201s"
 
     strings:
-        $ = /private.token\s*(:|=>|=)\s*[a-z0-9_]{20}/ fullword ascii
+        $ = /private.token\s*(:|=>|=)\s*[a-z0-9_]{20}/ fullword ascii nocase
 
     condition:
         any of them

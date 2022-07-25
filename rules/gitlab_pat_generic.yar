@@ -7,7 +7,7 @@ rule GitLabPatGenericRule : GitLab
         test_match_1 = "access-token:ab123mr980pas453201s"
 
     strings:
-        $ = /access.token\s*(:|=>|=)\s*[a-z0-9_]{20}/ fullword ascii
+        $ = /access.token\s*(:|=>|=)\s*[a-z0-9_]{20}/ fullword ascii nocase
 
     condition:
         any of them

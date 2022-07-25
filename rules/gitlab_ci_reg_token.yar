@@ -7,7 +7,7 @@ rule GitLabCiRegTokenRule : GitLab
         test_match_1 = "token:ab123mr980pas453201s"
 
     strings:
-        $ = /token\s*(:|=>|=)\s*[a-z0-9_]{20}/ fullword ascii
+        $ = /token\s*(:|=>|=)\s*[a-z0-9_]{20}/ fullword ascii nocase
 
     condition:
         any of them
