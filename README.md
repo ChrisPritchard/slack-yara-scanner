@@ -1,6 +1,6 @@
 # Readme
 
-To build, first install go-yara.
+To build, first install go-yara. What we want, ideally, is a single binary that includes the yara dll statically - otherwise it can rely on libc as normal. In this way, the binary can be uploaded to lambda without needing lib-yara installed in the lambda runtime (if thats even possible).
 
 1. Download the source package of yara from here: https://github.com/VirusTotal/yara/releases. Tested with yara-4.22
 2. Extract into a folder, e.g. `yara-4.22`
