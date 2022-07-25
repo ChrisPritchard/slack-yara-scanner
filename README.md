@@ -15,3 +15,7 @@ To build, first install go-yara.
     ```
 
 After this hopefully the application should be installable/runnable as normal.
+
+This has worked too: `export CGO_LDFLAGS="-static $(pkg-config --static --libs yara)"` - after installing yara, that embedded command returns `-L/usr/local/lib -lyara -lm`
+
+For uploading to lambda manually, a command like `rm main.zip; go build -o main && zip main.zip main` can be helpful.
