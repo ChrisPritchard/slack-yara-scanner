@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"embed"
@@ -34,6 +33,8 @@ const (
 	slackApiTokenEnvVar      = "SLACK_API_TOKEN"
 	slackReqTimestampHeader  = "x-slack-request-timestamp"
 	slackSignatureHeader     = "x-slack-signature"
+	warningPre               = "Hello! We have detected there might be some secret disclosure in the message you just sent :|"
+	warningPost              = "Please verify if this is the case, and if so, edit the message to remove these."
 )
 
 func init() {
@@ -76,34 +77,33 @@ func buildRules() {
 	scanner = *scannerCandidate
 }
 
-func scan(text string) (bool, string) {
-	var m yara.MatchRules
-	err := scanner.SetCallback(&m).ScanMem([]byte(text))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if len(m) == 0 {
-		return true, ""
-	}
-
-	buf := &bytes.Buffer{}
-	for i, match := range m {
-		if i > 0 {
-			fmt.Fprint(buf, ", ")
-		}
-		fmt.Fprintf(buf, "%s:%s", match.Namespace, match.Rule)
-	}
-
-	return false, buf.String()
-}
-
 func serverError() events.LambdaFunctionURLResponse {
 	return events.LambdaFunctionURLResponse{StatusCode: http.StatusInternalServerError}
 }
 
 func badRequest(text string) events.LambdaFunctionURLResponse {
 	return events.LambdaFunctionURLResponse{StatusCode: http.StatusBadRequest, Body: text}
+}
+
+func nameFrom(metas []yara.Meta) string {
+	for _, v := range metas {
+		if v.Identifier == "name" {
+			return v.Value.(string)
+		}
+	}
+
+	return "Unknown"
+}
+
+func combine(snippets []yara.MatchString) string {
+	r := ""
+	for i, v := range snippets {
+		r += "`" + string(v.Data) + "`"
+		if i < len(snippets)-1 {
+			r += ", "
+		}
+	}
+	return r
 }
 
 func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
@@ -154,13 +154,31 @@ func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLRespons
 		innerEvent := eventsAPIEvent.InnerEvent
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			respChannel, respTimestamp, err := api.PostMessage(ev.Channel, slack.MsgOptionText("Yes, hello - you sent: "+ev.Text, false))
+
+			var m yara.MatchRules
+			err := scanner.SetCallback(&m).ScanMem([]byte(ev.Text))
 			if err != nil {
-				log.Println("failed to call slack api with err: " + err.Error())
-			} else {
-				log.Println("called slack api successfully - respChannel: " + respChannel + ", timestamp: " + respTimestamp)
+				return serverError(), nil
 			}
 
+			if len(m) == 0 {
+				log.Println("message seems safe")
+			} else {
+
+				message := warningPre + "\n\n"
+				for _, v := range m {
+					message += fmt.Sprintf(" - *%s*: %s\n", nameFrom(v.Metas), combine(v.Strings))
+				}
+				message += "\n" + warningPost
+
+				respTimestamp, err := api.PostEphemeral(ev.Channel, ev.User, slack.MsgOptionText(message, false))
+				if err != nil {
+					log.Println("failed to call slack api with err: " + err.Error())
+				} else {
+					log.Println("called slack api successfully - timestamp: " + respTimestamp)
+					log.Printf("sent message to user '%s' in channel '%s'\n", ev.User, ev.Channel)
+				}
+			}
 		}
 	} else {
 		log.Println("type is not handled: " + eventsAPIEvent.Type)
