@@ -2,7 +2,7 @@
 
 This is a lambda application intended to be installed as a Slack app in your workspace. When installed, adding it to a channel will cause it to scan every message posted to that channel.
 
-The rules (under the [rules](./rules) folder) are defined using Yara notation - these rules will be checked against every message, and if there are any matches, an ephemeral message will be posted to the user to notify them that they might have disclosed some secrets:
+The rules (under the [rules](./rules) folder) are defined using [Yara](https://virustotal.github.io/yara/) notation - these rules will be checked against every message, and if there are any matches, an ephemeral message will be posted to the user to notify them that they might have disclosed some secrets:
 
 ![](./screenshots/example1.png)
 
@@ -25,7 +25,7 @@ For general info, the code was built on WSl2 Ubuntu 18, using Golang 1.18. The e
 Compiling is slightly tricky: the app has several dependencies, including the golang slack and lambda APIs, but [go-yara](https://github.com/hillu/go-yara) is the pain point as it requires [libyara](https://github.com/VirusTotal/yara) to compile. The goal for a smooth lambda deployment is a single binary to upload, which means ideally yara should be *statically* compiled with the go code. The approach documented is what I used below, but if you find an easier way or have issues, please let me know.
 
 1. Download the source package of yara from here: https://github.com/VirusTotal/yara/releases. Tested with yara-4.22
-2. Extract into a folder, e.g. `yara-4.22`. I placed this folder in the same folder as the source code (you'll se it ignored in [.gitignore](./.gitignore))
+2. Extract into a folder, e.g. 'yara-4.22'. I placed this folder in the same folder as the source code (you'll see it ignored in [.gitignore](./.gitignore))
 3. Get go-yara v4 with `go get github.com/hillu/go-yara/v4`
 4. You might need libssl installed: `sudo apt-get install libssl-dev`
 5. Install go-yara with the yara source files:
