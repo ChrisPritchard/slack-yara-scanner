@@ -12,6 +12,12 @@ Detecting and reporting on multiple secrets are supported:
 
 **Note**: This scanner does not *remove* or redact the messages - that requires more permissions than a bot would have, and also risks false positives. The user is merely advised to remove the secrets, and can obviously confirm and if necessary, ignore the message.
 
+## Updating the Rules
+
+The rules are compiled with the application via Go embed. To update the rules the scanner uses, you will need to compile it again and re-upload to Lambda. This isn't too onerous - and no changes need to be made to slack so it works straight away.
+
+The current rules (with a few modifications, additions) come from https://github.com/pseudo-security/slacksecrets. The credit for the rules sourced from that repo are part of the rules themselves.
+
 ## Compiling
 
 For general info, the code was built on WSl2 Ubuntu 18, using Golang 1.18. The editor used was VS Code.
