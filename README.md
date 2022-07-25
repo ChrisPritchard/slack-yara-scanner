@@ -44,12 +44,38 @@ Copy the URL - this is needed to setup slack
 
 ## Installing Step 2: Creating the app in slack
 
-- Create an app.
+- Create an app here: https://api.slack.com/apps
 - Under 'OAuth & Permissions', get the oauth token from the workspace section
   - The app needs `channels:history` and `chat:write` permissions
+
+    ![](screenshots/token.png)
+
+    ![](screenshots/scopes.png)
+
 - Under 'Event Subscriptions', enable event subscriptions
   - subscribe to bot events `message:channels`
 
+    ![](screenshots/events.png)
+
+- Use the lambda URL gathered earlier for verification - it should verify.
+
+You can install into your workspace at any time, though you might need to do multiple times if you add those scopes after installing.
+
+Gather the signing secret from the main app page, and the box token from the OAuth and Permissions page - it should start with `xoxb`
+
 ## Installing Step 3: Setting up environment variables in AWS
 
+Back to AWS, add the following two environment variables with the secrets gathered from step 2:
+
+- `SLACK_SIGNING_SECRET`
+- `SLACK_API_TOKEN`
+
+At this point the lambda should be functional. If you test it, then the logs should say forbidden, didn't come from slack or something similar. 
+
+![](screenshots/test-succeeded.png)
+
+Note, if it complains about libyara, then the compiling step wasn't successful and yara wasn't properly included.
+
 ## Installing Step 4: Usage and Testing
+
+All going well, the final step is to test. The app must be added to a channel, so add the app via the integrations menu, then try typing in one of the test strings from the yara rules. If its all working, the scanner should send you an ephemeral message!
