@@ -1,0 +1,19 @@
+display_information:
+  name: yara-scanner
+features:
+  bot_user:
+    display_name: yara-scanner
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - channels:history
+      - chat:write
+settings:
+  event_subscriptions:
+    request_url: https://rxm4ktc7nzkwugzapzj5jdsv3m0qlzuz.lambda-url.ap-southeast-2.on.aws/
+    bot_events:
+      - message.channels
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

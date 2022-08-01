@@ -51,6 +51,9 @@ Copy the URL - this is needed to setup slack
 ## Installing Step 2: Creating the app in slack
 
 - Create an app here: https://api.slack.com/apps
+
+Setup can be done two ways: from scratch or by using the [provided manifest](./manifest.yml) (you will need to update the URL to match your Lambda url). Below are the instructions to do this manually.
+
 - Under 'OAuth & Permissions', get the oauth token from the workspace section
   - The app needs `channels:history` and `chat:write` permissions
 
