@@ -1,16 +1,18 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
+	"bytes"
 	"embed"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -31,12 +33,11 @@ var (
 const (
 	slackSigningSecretEnvVar = "SLACK_SIGNING_SECRET"
 	slackApiTokenEnvVar      = "SLACK_API_TOKEN"
-	slackReqTimestampHeader  = "x-slack-request-timestamp"
-	slackSignatureHeader     = "x-slack-signature"
 	warningPre               = "Hello! We have detected there might be some secret disclosure in the message you just sent :|"
 	warningPost              = "Please verify if this is the case, and if so, edit the message to remove these."
 )
 
+// called before main
 func init() {
 	signingSecret = os.Getenv(slackSigningSecretEnvVar)
 	apiToken := os.Getenv(slackApiTokenEnvVar)
@@ -77,14 +78,6 @@ func buildRules() {
 	scanner = *scannerCandidate
 }
 
-func serverError() events.LambdaFunctionURLResponse {
-	return events.LambdaFunctionURLResponse{StatusCode: http.StatusInternalServerError}
-}
-
-func badRequest(text string) events.LambdaFunctionURLResponse {
-	return events.LambdaFunctionURLResponse{StatusCode: http.StatusBadRequest, Body: text}
-}
-
 func nameFrom(metas []yara.Meta) string {
 	for _, v := range metas {
 		if v.Identifier == "name" {
@@ -106,28 +99,34 @@ func combine(snippets []yara.MatchString) string {
 	return r
 }
 
-func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
+// Handler will check the request comes from the specific slack instance it has a signing secret for, then
+// if this passes it will scan message text with the yara rules. Any matches will be combined into a message that
+// is sent to the posting user as a ephemeral message using the slack api, so they can choose to take action.
+func Handler(w http.ResponseWriter, r *http.Request) {
 	log.Println("handler triggered")
 
-	var body []byte
-	if r.IsBase64Encoded {
-		b, err := base64.StdEncoding.DecodeString(r.Body)
-		if err != nil {
-			log.Println("base64 decoding failed - body was the following: " + r.Body)
-			return serverError(), nil
-		}
-		body = b
-	} else {
-		body = []byte(r.Body)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
-
-	slackTimestamp := r.Headers[slackReqTimestampHeader]
-	slackSignature := r.Headers[slackSignatureHeader]
-
-	slackSigningBaseString := "v0:" + slackTimestamp + ":" + string(body)
-
-	if !matchSignature(slackSignature, signingSecret, slackSigningBaseString) {
-		return events.LambdaFunctionURLResponse{Body: "Function was not invoked by Slack", StatusCode: http.StatusForbidden}, nil
+	sv, err := slack.NewSecretsVerifier(r.Header, signingSecret)
+	if err != nil {
+		log.Println("missing or invalid signing secret")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Function was not invoked by Slack"))
+		return
+	}
+	if _, err := sv.Write(body); err != nil {
+		log.Println("validation the signing secret failed with err: " + err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if err := sv.Ensure(); err != nil {
+		log.Println("invalid signing secret")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Invalid signing secret"))
+		return
 	}
 
 	log.Println("slack signature verified")
@@ -135,7 +134,8 @@ func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLRespons
 	eventsAPIEvent, err := slackevents.ParseEvent(json.RawMessage(body), slackevents.OptionNoVerifyToken())
 	if err != nil {
 		log.Println("failed to parse event: " + err.Error())
-		return serverError(), nil
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	if eventsAPIEvent.Type == slackevents.URLVerification {
@@ -144,10 +144,11 @@ func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLRespons
 		var r *slackevents.ChallengeResponse
 		err := json.Unmarshal([]byte(body), &r)
 		if err != nil {
-			return serverError(), nil
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
-		respHeader := map[string]string{"Content-Type": "text"}
-		return events.LambdaFunctionURLResponse{Headers: respHeader, Body: r.Challenge}, nil
+		w.Header().Add("Content-Type", "text")
+		w.Write([]byte(r.Challenge))
 	} else if eventsAPIEvent.Type == slackevents.CallbackEvent {
 		log.Println("type is call back event")
 
@@ -158,7 +159,8 @@ func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLRespons
 			var m yara.MatchRules
 			err := scanner.SetCallback(&m).ScanMem([]byte(ev.Text))
 			if err != nil {
-				return serverError(), nil
+				w.WriteHeader(http.StatusInternalServerError)
+				return
 			}
 
 			if len(m) == 0 {
@@ -174,9 +176,10 @@ func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLRespons
 				respTimestamp, err := api.PostEphemeral(ev.Channel, ev.User, slack.MsgOptionText(message, false))
 				if err != nil {
 					log.Println("failed to call slack api with err: " + err.Error())
+					w.WriteHeader(http.StatusInternalServerError)
+					return
 				} else {
 					log.Println("called slack api successfully - timestamp: " + respTimestamp)
-					log.Printf("sent message to user '%s' in channel '%s'\n", ev.User, ev.Channel)
 				}
 			}
 		}
@@ -184,22 +187,57 @@ func Handler(r events.LambdaFunctionURLRequest) (events.LambdaFunctionURLRespons
 		log.Println("type is not handled: " + eventsAPIEvent.Type)
 	}
 
-	return events.LambdaFunctionURLResponse{StatusCode: http.StatusAccepted}, nil
+	w.WriteHeader(http.StatusAccepted)
 }
 
-func matchSignature(slackSignature, signingSecret, slackSigningBaseString string) bool {
+// HttpAdapter converts the lambda specific request and response objects into HTTP objects for use with the Handler function.
+// This allows the app to be run as a regular webserver if needed, outside of lambda, and also more easily allows
+// the slack signature to be verified, as the code in the slack api expects the HTTP objects.
+func HttpAdapter(event events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
 
-	//calculate SHA256 of the slackSigningBaseString using signingSecret
-	mac := hmac.New(sha256.New, []byte(signingSecret))
-	mac.Write([]byte(slackSigningBaseString))
+	// read the body into a io reader - if its base64 encoded, decode it first
+	var body []byte
+	if event.IsBase64Encoded {
+		b, err := base64.StdEncoding.DecodeString(event.Body)
+		if err != nil {
+			log.Println("base64 decoding failed")
+			return events.LambdaFunctionURLResponse{StatusCode: http.StatusInternalServerError}, err
+		}
+		body = b
+	} else {
+		body = []byte(event.Body)
+	}
+	br := bytes.NewReader(body)
 
-	//hex encode the SHA256
-	calculatedSignature := "v0=" + hex.EncodeToString(mac.Sum(nil))
+	// create http request and response objects
+	r := httptest.NewRequest(event.RequestContext.HTTP.Method, event.RawPath, br)
+	w := httptest.NewRecorder()
+	http.DefaultServeMux.ServeHTTP(w, r)
 
-	match := hmac.Equal([]byte(slackSignature), []byte(calculatedSignature))
-	return match
+	headers := map[string]string{}
+	for k, v := range w.Header() {
+		headers[k] = v[0]
+	}
+
+	// convert the http response into a lambda response
+	respEvent := events.LambdaFunctionURLResponse{
+		Headers:    headers,
+		Body:       w.Body.String(),
+		StatusCode: w.Code,
+	}
+	return respEvent, nil
 }
 
 func main() {
-	lambda.Start(Handler)
+	http.HandleFunc("/", Handler)
+
+	// setting this flag determines if the app will run as a webserver or lambda
+	serveArg := flag.Int("serve", 0, "port to serve web on. if unspecified then the app will run expecting a lambda request/response")
+	flag.Parse()
+	if *serveArg > 0 {
+		log.Println("listening on port " + strconv.Itoa(*serveArg))
+		log.Println(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(*serveArg), http.DefaultServeMux))
+	} else {
+		lambda.Start(HttpAdapter)
+	}
 }

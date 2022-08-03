@@ -12,6 +12,20 @@ Detecting and reporting on multiple secrets are supported:
 
 **Note**: This scanner does not *remove* or redact the messages - that requires more permissions than a bot would have, and also risks false positives. The user is merely advised to remove the secrets, and can obviously confirm and if necessary, ignore the message.
 
+## Design
+
+The application is simple enough:
+
+1. It is setup so it can either be run in a lambda context, or as a webserver. The default is lambda, but if the argument `-serve [port]` is provided it will run as a webserver.
+   - note that in either case, two environment variables for slack need to be provided, the signing secret and the api token. This is checked in the init function called before main.
+   - the init function is also where the Yara rules, which are embedded as strings, are compiled into a yara rule set.
+2. When a request comes in, it is passed to the Handler function.
+   - If running in the default lambda mode, the lambda request with its context variables are first converted into http.Request and http.ResponseWriter objects before being converted back on done
+3. The Handler will first verify, using the slack-go API, that the request is signed by the appropriate slack instance.
+4. Next, if the event type is a URL verification request, the appropriate response is returned
+5. If not and its a event message, the text is extracted and scanned with the yara rule set
+6. If no matches are found, nothing further is done. However if one or more matches are made, the Handler will bundle these into a personal message, and use the slack api to write an ephemeral message to the user in the channel where they posted, likely less than a second after they sent the problematic text.
+
 ## Updating the Rules
 
 The rules are compiled with the application via Go embed. To update the rules the scanner uses, you will need to compile it again and re-upload to Lambda. This isn't too onerous - and no changes need to be made to slack so it works straight away.
@@ -88,3 +102,5 @@ Note, if it complains about libyara, then the compiling step wasn't successful a
 ## Installing Step 4: Usage and Testing
 
 All going well, the final step is to test. The app must be added to a channel, so add the app via the integrations menu, then try typing in one of the test strings from the yara rules. If its all working, the scanner should send you an ephemeral message!
+
+Note, as noted above in the design, you can also text in regular webserver mode by providing the argument `-serve [port]`, e.g. `-serve 5000`.
