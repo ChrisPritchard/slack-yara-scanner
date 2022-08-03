@@ -112,20 +112,20 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	sv, err := slack.NewSecretsVerifier(r.Header, signingSecret)
 	if err != nil {
-		log.Println("missing or invalid signing secret")
+		log.Println("missing or invalid slack headers: " + err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Function was not invoked by Slack"))
 		return
 	}
 	if _, err := sv.Write(body); err != nil {
-		log.Println("validation the signing secret failed with err: " + err.Error())
+		log.Println("validating the slack headers failed with err: " + err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if err := sv.Ensure(); err != nil {
-		log.Println("invalid signing secret")
+		log.Println("invalid signing headers")
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("Invalid signing secret"))
+		w.Write([]byte("Invalid signing headers"))
 		return
 	}
 
@@ -209,19 +209,30 @@ func HttpAdapter(event events.LambdaFunctionURLRequest) (events.LambdaFunctionUR
 	}
 	br := bytes.NewReader(body)
 
+	requestHeaders := map[string][]string{}
+	for k, v := range event.Headers {
+		if k == "x-slack-signature" {
+			k = "X-Slack-Signature" // this is dumb, but required. the slack verifier is case sensitive
+		} else if k == "x-slack-request-timestamp" {
+			k = "X-Slack-Request-Timestamp"
+		}
+		requestHeaders[k] = []string{v}
+	}
+
 	// create http request and response objects
-	r := httptest.NewRequest(event.RequestContext.HTTP.Method, event.RawPath, br)
+	r := httptest.NewRequest(event.RequestContext.HTTP.Method, "/", br)
+	r.Header = requestHeaders
 	w := httptest.NewRecorder()
 	http.DefaultServeMux.ServeHTTP(w, r)
 
-	headers := map[string]string{}
+	responseHeaders := map[string]string{}
 	for k, v := range w.Header() {
-		headers[k] = v[0]
+		responseHeaders[k] = v[0]
 	}
 
 	// convert the http response into a lambda response
 	respEvent := events.LambdaFunctionURLResponse{
-		Headers:    headers,
+		Headers:    responseHeaders,
 		Body:       w.Body.String(),
 		StatusCode: w.Code,
 	}
