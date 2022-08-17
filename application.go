@@ -34,7 +34,7 @@ const (
 	slackSigningSecretEnvVar = "SLACK_SIGNING_SECRET"
 	slackApiTokenEnvVar      = "SLACK_API_TOKEN"
 	warningPre               = "Hello! We have detected there might be some secret disclosure in the message you just sent :|"
-	warningPost              = "Please verify if this is the case, and if so, edit the message to remove these."
+	warningPost              = "Please verify if this is the case, and if so, edit the message to remove these and rotate the secrets if possible."
 )
 
 // called before main
