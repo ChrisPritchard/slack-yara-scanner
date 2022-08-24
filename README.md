@@ -22,6 +22,8 @@ The application is simple enough:
 2. When a request comes in, it is passed to the Handler function.
    - If running in the default lambda mode, the lambda request with its context variables are first converted into http.Request and http.ResponseWriter objects before being converted back on done
 3. The Handler will first verify, using the slack-go API, that the request is signed by the appropriate slack instance.
+    - for verification and the later api call, the lambda requests secrets from the local parameter store
+    - it does this by reading local env vars with the parameter names
 4. Next, if the event type is a URL verification request, the appropriate response is returned
 5. If not and its a event message, the text is extracted and scanned with the yara rule set
 6. If no matches are found, nothing further is done. However if one or more matches are made, the Handler will bundle these into a personal message, and use the slack api to write an ephemeral message to the user in the channel where they posted, likely less than a second after they sent the problematic text.
@@ -56,7 +58,9 @@ This has worked too: `export CGO_LDFLAGS="-static $(pkg-config --static --libs y
 
 ## Installing Step 1: Creating the Lambda in AWS
 
-I created an AWS Lambda with a public endpoint, unauthenticated with no triggers (as in anyone can call the URL, and that invokes the lambda). Slack authentication is handled in the source code. The Lambda app has been tested with x86_64 linux. Ensure the handler is set to `main`, so once the code is uploaded the lambda will invoke the main function which sets up the lambda.
+I created an AWS Lambda with a public endpoint, unauthenticated with no triggers (as in anyone can call the URL, and that invokes the lambda). Slack authentication is handled in the source code. The Lambda app has been tested with x86_64 linux and the Go 1.x runtime. Ensure the handler is set to `main`, so once the code is uploaded the lambda will invoke the main function which sets up the lambda.
+
+Important - the app will attempt to retrieve parameters from the secret manager parameter store. Policies for this can be added later, but it was tested with the basic `AmazonSSMReadOnlyAccess` managed policy.
 
 To upload the code, build the application using `go build -o main`. It should be built for the architecture used in your lambda (e.g. x86_64 linux). Next, zip the application: `zip main.zip main`. Finally upload the zip on the code page of your lambda config.
 
@@ -86,9 +90,11 @@ You can install into your workspace at any time, though you might need to do mul
 
 Gather the signing secret from the main app page, and the box token from the OAuth and Permissions page - it should start with `xoxb`
 
-## Installing Step 3: Setting up environment variables in AWS
+## Installing Step 3: Parameter store and setting up environment variables in AWS
 
-Back to AWS, add the following two environment variables with the secrets gathered from step 2:
+Back to AWS, go to the AWS SSM Parameter store and create two parameters, both 'securestrings'. These will hold the signing secret and slack api key from step 2. Make a note of your chosen parameter names.
+
+In the lambda configuration, add the following two environment variables with the names of their respective parameters:
 
 - `SLACK_SIGNING_SECRET`
 - `SLACK_API_TOKEN`

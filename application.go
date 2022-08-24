@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -33,8 +34,8 @@ var (
 )
 
 const (
-	slackSigningSecretEnvVar = "SLACK_SIGNING_SECRET"
-	slackApiTokenEnvVar      = "SLACK_API_TOKEN"
+	slackSigningSecretEnvVar = "SLACK_SIGNING_SECRET" // should contain the name of the signing secret parameter
+	slackApiTokenEnvVar      = "SLACK_API_TOKEN"      // ditto. these params should be secure strings in ssm
 	warningPre               = "Hello! We have detected there might be some secret disclosure in the message you just sent :|"
 	warningPost              = "Please verify if this is the case, and if so, edit the message to remove these and rotate the secrets if possible."
 )
@@ -44,6 +45,12 @@ var ssmClient *ssm.Client
 // called before main
 func init() {
 
+	signingSecretKey := os.Getenv(slackSigningSecretEnvVar)
+	apiTokenKey := os.Getenv(slackApiTokenEnvVar)
+	if signingSecretKey == "" || apiTokenKey == "" {
+		log.Fatal("Required environment variable(s) missing")
+	}
+
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatalf("failed to initiate aws config: %s", err.Error())
@@ -51,8 +58,8 @@ func init() {
 
 	ssmClient = ssm.NewFromConfig(cfg)
 
-	signingSecret = GetParam(slackSigningSecretEnvVar, true)
-	apiToken := GetParam(slackApiTokenEnvVar, true)
+	signingSecret = GetParam(signingSecretKey, true)
+	apiToken := GetParam(apiTokenKey, true)
 
 	api = slack.New(apiToken)
 	buildRules()
