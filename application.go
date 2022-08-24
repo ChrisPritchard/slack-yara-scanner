@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
@@ -11,11 +12,12 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hillu/go-yara/v4"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -37,16 +39,45 @@ const (
 	warningPost              = "Please verify if this is the case, and if so, edit the message to remove these and rotate the secrets if possible."
 )
 
+var ssmClient *ssm.Client
+
 // called before main
 func init() {
-	signingSecret = os.Getenv(slackSigningSecretEnvVar)
-	apiToken := os.Getenv(slackApiTokenEnvVar)
+
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		log.Fatalf("failed to initiate aws config: %s", err.Error())
+	}
+
+	ssmClient = ssm.NewFromConfig(cfg)
+
+	signingSecret = GetParam(slackSigningSecretEnvVar, true)
+	apiToken := GetParam(slackApiTokenEnvVar, true)
+
 	if signingSecret == "" || apiToken == "" {
 		log.Fatal("Required environment variable(s) missing")
 	}
 
 	api = slack.New(apiToken)
 	buildRules()
+}
+
+func GetParam(name string, withDecryption bool) string {
+	input := &ssm.GetParameterInput{
+		Name:           &name,
+		WithDecryption: withDecryption,
+	}
+
+	results, err := ssmClient.GetParameter(context.TODO(), input)
+	if err != nil {
+		log.Fatalf("couldn't get param with key '%s': %s", name, err.Error())
+	}
+
+	if results.Parameter.Value == nil {
+		log.Fatalf("failed to find parameter %s", name)
+	}
+
+	return *results.Parameter.Value
 }
 
 func buildRules() {
