@@ -54,10 +54,6 @@ func init() {
 	signingSecret = GetParam(slackSigningSecretEnvVar, true)
 	apiToken := GetParam(slackApiTokenEnvVar, true)
 
-	if signingSecret == "" || apiToken == "" {
-		log.Fatal("Required environment variable(s) missing")
-	}
-
 	api = slack.New(apiToken)
 	buildRules()
 }
