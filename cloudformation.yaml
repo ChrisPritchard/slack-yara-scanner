@@ -1,19 +1,60 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: An AWS Serverless Specification template describing your function.
+Description: Slack Yara Scanner - lambda and iam role
 Resources:
-  slackyarascanner:
+  SlackYaraScanner:
     Type: 'AWS::Serverless::Function'
     Properties:
       Handler: main
       Runtime: go1.x
-      CodeUri: .
       Description: ''
+      InlineCode: |
+        package main
+        import (
+          "context"
+          "github.com/aws/aws-lambda-go/lambda"
+        )
+        func main() {
+          lambda.Start(func(ctx context.Context, name MyEvent) (string, error) {
+            return "replace with compiled project", nil
+          })
+        }
       MemorySize: 512
       Timeout: 15
-      Role: >-
-        arn:aws:iam::850213078476:role/service-role/slack-yara-scanner-role-vogwqbfe
+      Role: !GetAtt SlackYaraScannerRole.Arn
       Environment:
         Variables:
           SLACK_API_TOKEN: slack-yara-scanner-api-key
           SLACK_SIGNING_SECRET: slack-yara-scanner-signing-secret
+  SlackYaraScannerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 'lambda:InvokeFunctionUrl'
+            Resource: !GetAtt SlackYaraScanner.Arn
+            Condition: StringEquals ['lambda:FunctionUrlAuthType', 'NONE']
+      Description: slackyarascanner role for secrets access
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:*
+            Resource: arn:aws:logs:*:*:*
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
+      RoleName: SlackYaraScannerRole
+
