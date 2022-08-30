@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: An AWS Serverless Specification template describing your function.
+Resources:
+  slackyarascanner:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: main
+      Runtime: go1.x
+      CodeUri: .
+      Description: ''
+      MemorySize: 512
+      Timeout: 15
+      Role: >-
+        arn:aws:iam::850213078476:role/service-role/slack-yara-scanner-role-vogwqbfe
+      Environment:
+        Variables:
+          SLACK_API_TOKEN: slack-yara-scanner-api-key
+          SLACK_SIGNING_SECRET: slack-yara-scanner-signing-secret
