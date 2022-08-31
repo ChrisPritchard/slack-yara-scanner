@@ -21,7 +21,7 @@ Resources:
         }
       MemorySize: 512
       Timeout: 15
-      Role: !GetAtt SlackYaraScannerRole.Arn
+      Role: arn::iam:::role/SlackYaraScannerRole
       Environment:
         Variables:
           SLACK_API_TOKEN: slack-yara-scanner-api-key
